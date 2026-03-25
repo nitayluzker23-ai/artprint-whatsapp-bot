@@ -35,6 +35,9 @@ const MAX_HISTORY = 20; // מקסימום הודעות לשמור בהיסטור
 // שמירת היסטוריית שיחות לכל לקוח (מתאפס כשהבוט מתחיל מחדש)
 const conversations = new Map();
 
+// לקוחות שהבעלים ענה להם ישירות — הבוט לא יענה להם
+const pausedUsers = new Set();
+
 // זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
 
@@ -62,6 +65,14 @@ client.on('disconnected', (reason) => {
   console.log('Bot disconnected:', reason);
 });
 
+// ===== זיהוי תגובת בעלים — השהיית הבוט ללקוח זה =====
+client.on('message_create', (message) => {
+  if (!message.fromMe) return;
+  if (message.to.endsWith('@g.us') || message.to === 'status@broadcast') return;
+  pausedUsers.add(message.to);
+  console.log(`Bot paused for user [${message.to}] - owner replied`);
+});
+
 // ===== טיפול בהודעות נכנסות =====
 client.on('message', async (message) => {
   // התעלם מהודעות קבוצה, סטטוס, ומהבוט עצמו
@@ -73,6 +84,12 @@ client.on('message', async (message) => {
   const userId = message.from;
   const userText = message.body?.trim();
   if (!userText) return;
+
+  // אם הבעלים ענה ללקוח הזה — הבוט לא מתערב
+  if (pausedUsers.has(userId)) {
+    console.log(`Skipping [${userId}] - owner is handling this conversation`);
+    return;
+  }
 
   console.log(`Message from [${userId}]: ${userText}`);
 
