@@ -93,25 +93,9 @@ client.on('disconnected', (reason) => {
 
 // ===== טיפול בהודעות נכנסות =====
 client.on('message', async (message) => {
-  // התעלם מהודעות קבוצה, סטטוס, ומהבוט עצמו
-  if (message.from.endsWith('@g.us') || message.from === 'status@broadcast' || message.fromMe) return;
-
-  // התעלם מהודעות ישנות שנשלחו לפני הפעלת הבוט
-  if (message.timestamp < BOT_START_TIME) return;
-
-  const userId = message.from;
-  const userText = message.body?.trim();
-  if (!userText) return;
-
   // מצב בדיקה — עונה רק למספר הבדיקה
   const TEST_PHONE = '972546901494@c.us';
-  if (userId !== TEST_PHONE) return;
-
-  // אם הבעלים ענה ללקוח הזה — הבוט לא מתערב
-  if (pausedUsers.has(userId)) {
-    console.log(`Skipping [${userId}] - owner is handling this conversation`);
-    return;
-  }
+  if (message.from !== TEST_PHONE) return;
 
   console.log(`Message from [${userId}]: ${userText}`);
 
