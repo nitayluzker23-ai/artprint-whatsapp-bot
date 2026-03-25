@@ -114,6 +114,10 @@ client.on('message', async (message) => {
   const userText = message.body?.trim();
   if (!userText) return;
 
+  // מצב בדיקה — עונה רק למספר הבדיקה
+  const TEST_PHONE = '972546901494@c.us';
+  if (userId !== TEST_PHONE) return;
+
   // אם הבעלים ענה ללקוח הזה — הבוט לא מתערב
   if (pausedUsers.has(userId)) {
     console.log(`Skipping [${userId}] - owner is handling this conversation`);
