@@ -62,7 +62,7 @@ const conversations = new Map();
 
 // לקוחות שהבעלים ענה להם ישירות — הבוט לא יענה להם
 const pausedUsers = new Set();
-const botMessageIds = new Set(); // IDs של הודעות שהבוט שלח
+const botReplying = new Set(); // לקוחות שהבוט כרגע שולח להם תשובה
 
 // זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
@@ -83,8 +83,10 @@ client.on('qr', async (qr) => {
   qrImageUrl = await QRCode.toDataURL(qr, { width: 600, margin: 2 });
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   console.log('Bot is connected and ready!');
+  const TEST_NUMBER = '972546901494@c.us';
+  await client.sendMessage(TEST_NUMBER, 'הבוט מחובר ועובד ✓');
 });
 
 client.on('disconnected', (reason) => {
@@ -96,10 +98,7 @@ client.on('disconnected', (reason) => {
 client.on('message_create', (message) => {
   if (!message.fromMe) return;
   if (message.to.endsWith('@g.us') || message.to === 'status@broadcast') return;
-  if (botMessageIds.has(message.id?.id)) {
-    botMessageIds.delete(message.id?.id); // הודעה של הבוט — מתעלמים
-    return;
-  }
+  if (botReplying.has(message.to)) return; // הבוט שולח — מתעלמים
   pausedUsers.add(message.to); // הודעה של הבעלים — עוצרים את הבוט
   console.log(`Bot paused for user [${message.to}] - owner replied`);
 });
@@ -147,16 +146,16 @@ client.on('message', async (message) => {
     history.push({ role: 'assistant', content: botReply });
 
     // בדוק אם צריך להעביר לנציג
+    botReplying.add(userId);
     if (botReply.includes('[TRANSFER_TO_AGENT]')) {
       const cleanReply = botReply.replace('[TRANSFER_TO_AGENT]', '').trim();
-      const sent = await message.reply(cleanReply);
-      if (sent?.id?.id) botMessageIds.add(sent.id.id);
+      await message.reply(cleanReply);
       await notifyOwner(userId, userText);
       console.log(`TRANSFER TO AGENT - [${userId}]`);
     } else {
-      const sent = await message.reply(botReply);
-      if (sent?.id?.id) botMessageIds.add(sent.id.id);
+      await message.reply(botReply);
     }
+    botReplying.delete(userId);
 
     console.log(`Bot replied to [${userId}]: ${botReply.substring(0, 80)}...`);
 
