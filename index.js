@@ -1,8 +1,31 @@
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const Anthropic = require('@anthropic-ai/sdk');
 const SYSTEM_PROMPT = require('./systemPrompt');
+const express = require('express');
+
+// ===== שרת QR =====
+const app = express();
+let qrImageUrl = null;
+
+app.get('/', (req, res) => {
+  if (qrImageUrl) {
+    res.send(`<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#fff">
+      <div style="text-align:center">
+        <h2>Scan with WhatsApp</h2>
+        <img src="${qrImageUrl}" style="width:300px;height:300px"/>
+        <p>Refresh if expired</p>
+      </div>
+    </body></html>`);
+  } else {
+    res.send('<html><body style="text-align:center;padding:50px"><h2>Bot is connected! No QR needed.</h2></body></html>');
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`QR server running on port ${PORT}`));
 
 // ===== הגדרות =====
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -25,9 +48,10 @@ const client = new Client({
   }
 });
 
-client.on('qr', (qr) => {
-  console.log('\nScan the QR code with WhatsApp:');
+client.on('qr', async (qr) => {
+  console.log('New QR code generated - open the web URL to scan');
   qrcode.generate(qr, { small: true });
+  qrImageUrl = await QRCode.toDataURL(qr);
 });
 
 client.on('ready', () => {
