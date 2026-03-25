@@ -100,22 +100,18 @@ client.on('message', async (message) => {
   console.log(`Message from [${userId}]: ${userText}`);
 
   try {
-    // אתחול היסטוריה אם לא קיימת
     if (!conversations.has(userId)) {
       conversations.set(userId, []);
     }
 
     const history = conversations.get(userId);
-
-    // הוסף את הודעת הלקוח להיסטוריה
     history.push({ role: 'user', content: userText });
 
-    // שמור רק את ה-MAX_HISTORY הודעות האחרונות
     if (history.length > MAX_HISTORY) {
       history.splice(0, history.length - MAX_HISTORY);
     }
 
-    // שלח לקלוד
+    console.log('Calling Claude API...');
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
@@ -123,9 +119,9 @@ client.on('message', async (message) => {
       messages: history
     });
 
+    console.log('Claude API responded!');
     const botReply = response.content[0].text;
 
-    // הוסף את תשובת הבוט להיסטוריה
     history.push({ role: 'assistant', content: botReply });
 
     // בדוק אם צריך להעביר לנציג
