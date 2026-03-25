@@ -67,6 +67,16 @@ const botReplying = new Set(); // לקוחות שהבוט כרגע שולח לה
 // זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
 
+// בדיקת שעות פעילות
+function isOffHours() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const hour = now.getHours();
+  const day = now.getDay(); // 0=ראשון, 1=שני, 2=שלישי, 3=רביעי, 4=חמישי, 5=שישי
+  if (day === 2 && hour >= 14 && hour < 18) return true; // שלישי 14-18
+  if ([0, 1, 3, 4].includes(day) && hour >= 14 && hour < 16) return true; // ימים רגילים 14-16
+  return false;
+}
+
 // ===== חיבור WhatsApp =====
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -83,10 +93,8 @@ client.on('qr', async (qr) => {
   qrImageUrl = await QRCode.toDataURL(qr, { width: 600, margin: 2 });
 });
 
-client.on('ready', async () => {
+client.on('ready', () => {
   console.log('Bot is connected and ready!');
-  const TEST_NUMBER = '972546901494@c.us';
-  await client.sendMessage(TEST_NUMBER, 'הבוט מחובר ועובד ✓');
 });
 
 client.on('disconnected', (reason) => {
@@ -133,10 +141,13 @@ client.on('message', async (message) => {
     }
 
     console.log('Calling Claude API...');
+    const offHoursNote = isOffHours()
+      ? '\n\n=== הערה לבוט: עכשיו מחוץ לשעות הפעילות (הפסקה/סגירה) ===\nהודע ללקוח בנימוס שאנו לא עובדים כעת, אך הדגש שאתה שמח לסייע לו להתחיל בתהליך ההזמנה. הדגש שלא נוכל לבצע עבודות באופן מיידי בשעות אלה.'
+      : '';
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + offHoursNote,
       messages: history
     });
 
