@@ -92,8 +92,8 @@ client.on('disconnected', (reason) => {
 
 
 // ===== טיפול בהודעות נכנסות =====
-client.on('message', async (message) => {
-  console.log(`RAW: from=${message.from} fromMe=${message.fromMe}`);
+client.on('message_create', async (message) => {
+  console.log(`RAW: from=${message.from} to=${message.to} fromMe=${message.fromMe}`);
 
   // מצב בדיקה — עונה רק למספר הבדיקה
   const TEST_PHONE = '972546901494@c.us';
