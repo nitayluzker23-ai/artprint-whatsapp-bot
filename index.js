@@ -62,6 +62,7 @@ const conversations = new Map();
 
 // לקוחות שהבעלים ענה להם ישירות — הבוט לא יענה להם
 const pausedUsers = new Set();
+const botMessageIds = new Set(); // IDs של הודעות שהבוט שלח
 
 // זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
@@ -71,7 +72,7 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'chromium',
+    ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   }
 });
@@ -91,13 +92,32 @@ client.on('disconnected', (reason) => {
 });
 
 
-// ===== טיפול בהודעות נכנסות =====
-client.on('message_create', async (message) => {
-  console.log(`RAW: from=${message.from} to=${message.to} fromMe=${message.fromMe}`);
+// ===== זיהוי תגובת בעלים — השהיית הבוט ללקוח זה =====
+client.on('message_create', (message) => {
+  if (!message.fromMe) return;
+  if (message.to.endsWith('@g.us') || message.to === 'status@broadcast') return;
+  if (botMessageIds.has(message.id?.id)) {
+    botMessageIds.delete(message.id?.id); // הודעה של הבוט — מתעלמים
+    return;
+  }
+  pausedUsers.add(message.to); // הודעה של הבעלים — עוצרים את הבוט
+  console.log(`Bot paused for user [${message.to}] - owner replied`);
+});
 
-  // מצב בדיקה — עונה רק למספר הבדיקה
-  const TEST_PHONE = '972546901494@c.us';
-  if (message.from !== TEST_PHONE) return;
+// ===== טיפול בהודעות נכנסות =====
+client.on('message', async (message) => {
+  if (message.from.endsWith('@g.us') || message.from === 'status@broadcast' || message.fromMe) return;
+  if (message.timestamp < BOT_START_TIME) return;
+
+  const userId = message.from;
+  const userText = message.body?.trim();
+  if (!userText) return;
+
+  // אם הבעלים ענה ללקוח הזה — הבוט לא מתערב
+  if (pausedUsers.has(userId)) {
+    console.log(`Skipping [${userId}] - owner is handling this conversation`);
+    return;
+  }
 
   console.log(`Message from [${userId}]: ${userText}`);
 
@@ -129,11 +149,13 @@ client.on('message_create', async (message) => {
     // בדוק אם צריך להעביר לנציג
     if (botReply.includes('[TRANSFER_TO_AGENT]')) {
       const cleanReply = botReply.replace('[TRANSFER_TO_AGENT]', '').trim();
-      await message.reply(cleanReply);
+      const sent = await message.reply(cleanReply);
+      if (sent?.id?.id) botMessageIds.add(sent.id.id);
       await notifyOwner(userId, userText);
       console.log(`TRANSFER TO AGENT - [${userId}]`);
     } else {
-      await message.reply(botReply);
+      const sent = await message.reply(botReply);
+      if (sent?.id?.id) botMessageIds.add(sent.id.id);
     }
 
     console.log(`Bot replied to [${userId}]: ${botReply.substring(0, 80)}...`);
