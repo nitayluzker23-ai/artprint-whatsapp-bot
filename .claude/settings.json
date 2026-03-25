@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir \"C:\\\\Users\\\\Nitay\\\\OneDrive\\\\מסמכים\\\\TRADING AGENTS\\\\report\")",
+      "Bash(mkdir \"C:\\\\Users\\\\Nitay\\\\OneDrive\\\\מסמכים\\\\TRADING AGENTS\\\\reports\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\data",
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\strategies",
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\report"
+    ]
+  }
+}
