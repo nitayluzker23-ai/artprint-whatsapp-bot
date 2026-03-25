@@ -71,9 +71,18 @@ const BOT_START_TIME = Math.floor(Date.now() / 1000);
 function isOffHours() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
   const hour = now.getHours();
-  const day = now.getDay(); // 0=ראשון, 1=שני, 2=שלישי, 3=רביעי, 4=חמישי, 5=שישי
-  if (day === 2 && hour >= 14 && hour < 18) return true; // שלישי 14-18
-  if ([0, 1, 3, 4].includes(day) && hour >= 14 && hour < 16) return true; // ימים רגילים 14-16
+  const day = now.getDay(); // 0=ראשון, 1=שני, 2=שלישי, 3=רביעי, 4=חמישי, 5=שישי, 6=שבת
+
+  if (day === 6) return true; // שבת — סגור כל היום
+  if (hour < 9) return true; // לפני 9:00 — כל הימים
+
+  // שלישי ושישי: עובדים רק 9:00–13:00
+  if ([2, 5].includes(day) && hour >= 13) return true;
+
+  // א, ב, ד, ה: עובדים 9:00–13:00 ו-16:00–18:00
+  if ([0, 1, 3, 4].includes(day) && hour >= 13 && hour < 16) return true; // הפסקה
+  if ([0, 1, 3, 4].includes(day) && hour >= 18) return true; // אחרי 18:00
+
   return false;
 }
 
