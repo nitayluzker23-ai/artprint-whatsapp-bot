@@ -15,13 +15,24 @@ app.get('/', (req, res) => {
     res.send(`<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#fff">
       <div style="text-align:center">
         <h2>Scan with WhatsApp</h2>
-        <img src="${qrImageUrl}" style="width:300px;height:300px"/>
+        <img src="${qrImageUrl}" style="width:400px;height:400px"/>
+        <br/><br/>
+        <a href="/qr.png" download="qr.png" style="font-size:18px;padding:10px 20px;background:#25D366;color:#fff;text-decoration:none;border-radius:8px">Download QR Image</a>
         <p>Refresh if expired</p>
       </div>
     </body></html>`);
   } else {
     res.send('<html><body style="text-align:center;padding:50px"><h2>Bot is connected! No QR needed.</h2></body></html>');
   }
+});
+
+app.get('/qr.png', async (req, res) => {
+  if (!qrImageUrl) return res.status(404).send('No QR available');
+  const base64Data = qrImageUrl.replace(/^data:image\/png;base64,/, '');
+  const imgBuffer = Buffer.from(base64Data, 'base64');
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Content-Disposition', 'attachment; filename="qr.png"');
+  res.send(imgBuffer);
 });
 
 const PORT = process.env.PORT || 3000;
