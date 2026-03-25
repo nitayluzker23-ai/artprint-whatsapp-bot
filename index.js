@@ -63,9 +63,6 @@ const conversations = new Map();
 // לקוחות שהבעלים ענה להם ישירות — הבוט לא יענה להם
 const pausedUsers = new Set();
 
-// מעקב אחרי הודעות שהבוט עצמו שולח (כדי לא לחסום אותן)
-const botReplying = new Set();
-
 // זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
 
@@ -93,14 +90,6 @@ client.on('disconnected', (reason) => {
   console.log('Bot disconnected:', reason);
 });
 
-// ===== זיהוי תגובת בעלים — השהיית הבוט ללקוח זה =====
-client.on('message_create', (message) => {
-  if (!message.fromMe) return;
-  if (message.to.endsWith('@g.us') || message.to === 'status@broadcast') return;
-  if (botReplying.has(message.to)) return; // הודעה שהבוט שלח — לא לחסום
-  pausedUsers.add(message.to);
-  console.log(`Bot paused for user [${message.to}] - owner replied`);
-});
 
 // ===== טיפול בהודעות נכנסות =====
 client.on('message', async (message) => {
@@ -156,7 +145,6 @@ client.on('message', async (message) => {
     history.push({ role: 'assistant', content: botReply });
 
     // בדוק אם צריך להעביר לנציג
-    botReplying.add(userId);
     if (botReply.includes('[TRANSFER_TO_AGENT]')) {
       const cleanReply = botReply.replace('[TRANSFER_TO_AGENT]', '').trim();
       await message.reply(cleanReply);
@@ -165,7 +153,6 @@ client.on('message', async (message) => {
     } else {
       await message.reply(botReply);
     }
-    botReplying.delete(userId);
 
     console.log(`Bot replied to [${userId}]: ${botReply.substring(0, 80)}...`);
 
