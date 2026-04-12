@@ -8,6 +8,7 @@ const express = require('express');
 
 // ===== שרת QR =====
 const app = express();
+app.use(express.json());
 let qrImageUrl = null;
 
 app.get('/qr-status', (req, res) => {
@@ -49,6 +50,21 @@ app.get('/qr.png', async (req, res) => {
   res.send(imgBuffer);
 });
 
+// ===== Trading Reports Endpoint =====
+app.post('/send-report', async (req, res) => {
+  const { text, phone } = req.body;
+  if (!text) return res.status(400).json({ error: 'Missing text' });
+  const targetPhone = phone || process.env.OWNER_PHONE;
+  if (!targetPhone) return res.status(400).json({ error: 'No phone configured' });
+  try {
+    const chatId = targetPhone.includes('@c.us') ? targetPhone : `${targetPhone}@c.us`;
+    await client.sendMessage(chatId, text);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`QR server running on port ${PORT}`));
 
@@ -57,14 +73,12 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const OWNER_PHONE = process.env.OWNER_PHONE; // מספר בעל העסק לקבלת התראות
 const MAX_HISTORY = 20; // מקסימום הודעות לשמור בהיסטוריה לכל לקוח
 
-// שמירת היסטוריית שיחות לכל לקוח (מתאפס כשהבוט מתחיל מחדש)
 const conversations = new Map();
-
-// לקוחות שהבעלים ענה להם ישירות — הבוט לא יענה להם
 const pausedUsers = new Set();
-const botReplying = new Set(); // לקוחות שהבוט כרגע שולח להם תשובה
+const botCurrentlySending = new Set();
+const lastMessageTime = new Map(); // מעקב אחרי זמן הודעה אחרונה לכל לקוח
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 דקות
 
-// זמן הפעלת הבוט — מתעלמים מהודעות ישנות
 const BOT_START_TIME = Math.floor(Date.now() / 1000);
 
 // בדיקת שעות פעילות
@@ -92,7 +106,7 @@ const client = new Client({
   puppeteer: {
     headless: true,
     ...(process.env.PUPPETEER_EXECUTABLE_PATH && { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }),
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote', '--single-process']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   }
 });
 
@@ -111,13 +125,18 @@ client.on('disconnected', (reason) => {
 });
 
 
-// ===== זיהוי תגובת בעלים — השהיית הבוט ללקוח זה =====
-client.on('message_create', (message) => {
+// ===== זיהוי תגובת בעלים — השהיית הבוט וסיכום שיחה =====
+client.on('message_create', async (message) => {
   if (!message.fromMe) return;
+  if (message.timestamp < BOT_START_TIME) return; // התעלם מהודעות ישנות
   if (message.to.endsWith('@g.us') || message.to === 'status@broadcast') return;
-  if (botReplying.has(message.to)) return; // הבוט שולח — מתעלמים
-  pausedUsers.add(message.to); // הודעה של הבעלים — עוצרים את הבוט
-  console.log(`Bot paused for user [${message.to}] - owner replied`);
+  if (message.to === `${OWNER_PHONE}@c.us`) return;
+  if (botCurrentlySending.has(message.to)) return;
+  if (!pausedUsers.has(message.to)) {
+    pausedUsers.add(message.to);
+    console.log(`Bot paused for [${message.to}] - owner replied`);
+    await sendSummary(message.to, 'owner_reply');
+  }
 });
 
 // ===== טיפול בהודעות נכנסות =====
@@ -129,9 +148,36 @@ client.on('message', async (message) => {
   const userText = message.body?.trim();
   if (!userText) return;
 
-  // אם הבעלים ענה ללקוח הזה — הבוט לא מתערב
+  // ===== מצב יועץ פנימי — הבעלים שואל על מחירים =====
+  const isOwner = userId === `${OWNER_PHONE}@c.us`;
+  if (isOwner) {
+    console.log(`Advisor query from owner: ${userText}`);
+    try {
+      const ownerHistory = conversations.get('owner') || [];
+      ownerHistory.push({ role: 'user', content: userText });
+      if (ownerHistory.length > MAX_HISTORY) ownerHistory.splice(0, ownerHistory.length - MAX_HISTORY);
+      conversations.set('owner', ownerHistory);
+
+      const advisorPrompt = SYSTEM_PROMPT + '\n\n=== מצב יועץ פנימי ===\nזוהי שאלה פנימית מצוות העסק. ענה ישירות ובתמציתיות על כל שאלת מחיר, מוצר, כמות, גודל או זמן אספקה — ללא שאלות אונבורדינג וללא ברכות פתיחה. פשוט תשובה עניינית.';
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: advisorPrompt,
+        messages: ownerHistory
+      });
+      const reply = response.content[0].text;
+      ownerHistory.push({ role: 'assistant', content: reply });
+      await message.reply(reply);
+    } catch (err) {
+      console.error('Advisor error:', err.message);
+    }
+    return;
+  }
+
+  lastMessageTime.set(userId, Date.now());
+
   if (pausedUsers.has(userId)) {
-    console.log(`Skipping [${userId}] - owner is handling this conversation`);
+    console.log(`Skipping [${userId}] - owner is handling`);
     return;
   }
 
@@ -149,9 +195,11 @@ client.on('message', async (message) => {
       history.splice(0, history.length - MAX_HISTORY);
     }
 
-    console.log('Calling Claude API...');
+    const isFirstMessage = history.length === 1;
     const offHoursNote = isOffHours()
-      ? '\n\n=== הערה לבוט: עכשיו מחוץ לשעות הפעילות (הפסקה/סגירה) ===\nהודע ללקוח בנימוס שאנו לא עובדים כעת, אך הדגש שאתה שמח לסייע לו להתחיל בתהליך ההזמנה. הדגש שלא נוכל לבצע עבודות באופן מיידי בשעות אלה.'
+      ? (isFirstMessage
+        ? '\n\n=== הערה לבוט: עכשיו מחוץ לשעות הפעילות ===\nפתח את תשובתך בהודעה שאתה בוט אוטומטי ושהעסק כרגע סגור, אך אתה זמין לסייע בכל שאלה, מחיר או הזמנה. אחר כך המשך עם הברכה הרגילה.'
+        : '\n\n=== הערה לבוט: עכשיו מחוץ לשעות הפעילות ===\nאם הלקוח מבקש שירות מיידי — הזכר שהעסק סגור כעת אך ניתן להשאיר פרטים.')
       : '';
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -160,22 +208,21 @@ client.on('message', async (message) => {
       messages: history
     });
 
-    console.log('Claude API responded!');
     const botReply = response.content[0].text;
-
     history.push({ role: 'assistant', content: botReply });
 
-    // בדוק אם צריך להעביר לנציג
-    botReplying.add(userId);
+    botCurrentlySending.add(userId);
     if (botReply.includes('[TRANSFER_TO_AGENT]')) {
       const cleanReply = botReply.replace('[TRANSFER_TO_AGENT]', '').trim();
       await message.reply(cleanReply);
+      botCurrentlySending.delete(userId);
       await notifyOwner(userId, userText);
+      await sendSummary(userId, 'transfer');
       console.log(`TRANSFER TO AGENT - [${userId}]`);
     } else {
       await message.reply(botReply);
+      botCurrentlySending.delete(userId);
     }
-    botReplying.delete(userId);
 
     console.log(`Bot replied to [${userId}]: ${botReply.substring(0, 80)}...`);
 
@@ -185,6 +232,43 @@ client.on('message', async (message) => {
   }
 });
 
+// ===== בדיקת חוסר פעילות כל 5 דקות =====
+setInterval(async () => {
+  const now = Date.now();
+  for (const [userId, lastTime] of lastMessageTime.entries()) {
+    if (now - lastTime > INACTIVITY_TIMEOUT && conversations.has(userId)) {
+      console.log(`Inactivity timeout for [${userId}]`);
+      await sendSummary(userId, 'inactivity');
+      conversations.delete(userId);
+      lastMessageTime.delete(userId);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// ===== שליחת סיכום שיחה לבעלים =====
+async function sendSummary(userId, reason) {
+  if (!OWNER_PHONE || !conversations.has(userId)) return;
+  const history = conversations.get(userId);
+  if (history.length === 0) return;
+  try {
+    const reasonText = reason === 'transfer' ? 'העברה לנציג' : reason === 'owner_reply' ? 'בעלים ענה' : 'חוסר פעילות';
+    const conversationText = history.map(m => `${m.role === 'user' ? 'לקוח' : 'בוט'}: ${m.content}`).join('\n');
+    const summaryResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 500,
+      system: 'סכם שיחה בעברית בקצרה: מי הלקוח, מה ביקש, מה הוצע לו, מה המצב. תשובה קצרה ועניינית.',
+      messages: [{ role: 'user', content: conversationText }]
+    });
+    const summary = summaryResponse.content[0].text;
+    const phone = userId.replace('@c.us', '');
+    await client.sendMessage(`${OWNER_PHONE}@c.us`,
+      `📋 *סיכום שיחה* (${reasonText})\n📱 מספר: ${phone}\n\n${summary}`
+    );
+  } catch (err) {
+    console.error('Error sending summary:', err.message);
+  }
+}
+
 // ===== שליחת התראה לבעל העסק =====
 async function notifyOwner(userId, lastMessage) {
   if (!OWNER_PHONE) return;
@@ -192,7 +276,7 @@ async function notifyOwner(userId, lastMessage) {
     const notification = `New transfer to agent\nPhone: ${userId.replace('@c.us', '')}\nMessage: ${lastMessage}`;
     await client.sendMessage(`${OWNER_PHONE}@c.us`, notification);
   } catch (err) {
-    console.error('שגיאה בשליחת התראה לבעלים:', err.message);
+    console.error('Error notifying owner:', err.message);
   }
 }
 

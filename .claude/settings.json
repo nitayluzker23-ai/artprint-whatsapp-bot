@@ -2,12 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(mkdir \"C:\\\\Users\\\\Nitay\\\\OneDrive\\\\מסמכים\\\\TRADING AGENTS\\\\report\")",
-      "Bash(mkdir \"C:\\\\Users\\\\Nitay\\\\OneDrive\\\\מסמכים\\\\TRADING AGENTS\\\\reports\")"
+      "Bash(mkdir \"C:\\\\Users\\\\Nitay\\\\OneDrive\\\\מסמכים\\\\TRADING AGENTS\\\\reports\")",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "WebFetch(domain:ir.theice.com)",
+      "WebFetch(domain:www.wallstreethorizon.com)",
+      "Read(//c/Users/Nitay/OneDrive/מסמכים/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\data",
       "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\strategies",
-      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\report"
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\report",
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS\\output",
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים\\TRADING AGENTS",
+      "C:\\Users\\Nitay\\OneDrive\\מסמכים"
     ]
   }
 }
