@@ -23,15 +23,17 @@ app.get('/', (req, res) => {
       <h2>ממתין ל-QR...</h2>
     </div>
     <script>
+      let lastQR = null;
       async function checkQR() {
         const res = await fetch('/qr-status');
         const data = await res.json();
         const content = document.getElementById('content');
         if (data.connected) {
           content.innerHTML = '<h2 style="color:green">הבוט מחובר!</h2>';
-        } else if (data.qr) {
-          content.innerHTML = '<h2>סרוק עם וואטסאפ</h2><img src="' + data.qr + '" style="width:500px;height:500px"/><br/><br/><a href="/qr.png" download="qr.png" style="font-size:18px;padding:10px 20px;background:#25D366;color:#fff;text-decoration:none;border-radius:8px">הורד תמונה</a>';
-        } else {
+        } else if (data.qr && data.qr !== lastQR) {
+          lastQR = data.qr;
+          content.innerHTML = '<h2>סרוק עם וואטסאפ</h2><img src="' + data.qr + '" style="width:500px;height:500px"/><br/><br/><a href="/qr.png" download="qr.png" style="font-size:18px;padding:10px 20px;background:#25D366;color:#fff;text-decoration:none;border-radius:8px">הורד תמונה</a><p style="color:gray">QR מתעדכן אוטומטית רק כשפג תוקף</p>';
+        } else if (!data.qr) {
           content.innerHTML = '<h2>ממתין ל-QR...</h2>';
         }
       }
@@ -195,6 +197,9 @@ client.on('message', async (message) => {
       history.splice(0, history.length - MAX_HISTORY);
     }
 
+    const now = new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', weekday: 'long' });
+    const timeNote = `\n\n=== השעה הנוכחית: ${now} ===`;
+
     const isFirstMessage = history.length === 1;
     const offHoursNote = isOffHours()
       ? (isFirstMessage
@@ -204,7 +209,7 @@ client.on('message', async (message) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT + offHoursNote,
+      system: SYSTEM_PROMPT + timeNote + offHoursNote,
       messages: history
     });
 
